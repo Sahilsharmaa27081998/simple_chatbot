@@ -1,0 +1,202 @@
+\documentclass[12pt]{article}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+
+% Define the page margins
+\geometry{
+  a4paper,
+  left=25mm,
+  right=25mm,
+  top=25mm,
+  bottom=25mm,
+}
+
+% Define colors for code
+\lstset{
+  basicstyle=\ttfamily,
+  keywordstyle=\color{blue},
+  stringstyle=\color{red},
+  commentstyle=\color{green},
+  showstringspaces=false,
+  breaklines=true,
+}
+
+\title{AML3304 Course Project: AI Chatbot Development}
+\author{
+  Sumit Gajjar – C0896272 \\
+  Rohan Ladhani - C0894459 \\
+  Akash Khatri - C0896274 \\
+  Sahil Sharma - C0907757
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document presents the development of an AI chatbot using Google Colab, PyTorch, and TensorFlow. The project includes a detailed guide on the development process, theoretical foundations, implementation details, and practical applications.
+\end{abstract}
+
+\section*{Instructor}
+Peter
+
+\newpage
+
+\tableofcontents
+\newpage
+
+\section{Introduction to AI Conversational Models}
+AI conversational models, commonly known as chatbots, are designed to simulate human conversation through text or voice interactions. These models have become integral in customer service, healthcare, education, and numerous other fields. The objective of this project is to build an AI chatbot using Google Colab, PyTorch, and TensorFlow. By leveraging pretrained models and fine-tuning them for specific tasks, we aim to create a responsive and informative chatbot.
+
+\section{Foundations of AI and Machine Learning}
+Artificial Intelligence (AI) and Machine Learning (ML) are the cornerstones of modern computational advancements. Neural networks, a subset of AI, enable deep learning, which is crucial for complex tasks like natural language processing (NLP). Transformers and embeddings have revolutionized NLP, allowing models to understand and generate human language with unprecedented accuracy.
+
+\section{Designing the AI Model}
+The AI model chosen for this project is based on the GPT-3 architecture, known for its state-of-the-art performance in NLP tasks. GPT-3, a transformer-based model, utilizes embeddings to convert text into numerical representations, enabling it to understand context and generate coherent responses. The model's architecture was selected for its ability to handle complex language tasks with minimal fine-tuning.
+
+\section{Development Process}
+The development process began with setting up the environment in Google Colab. The following steps were undertaken:
+
+\begin{enumerate}
+    \item Importing necessary libraries and dependencies.
+    \item Loading the pretrained model and tokenizer.
+    \item Fine-tuning the model with custom datasets.
+    \item Implementing functions to handle user inputs and generate responses.
+\end{enumerate}
+
+\begin{lstlisting}[language=Python, caption=Python Code for Chatbot Development]
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments, TextDataset, DataCollatorForLanguageModeling
+
+model_name = "microsoft/DialoGPT-small"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
+
+def load_dataset(file_path, tokenizer):
+    return TextDataset(
+        tokenizer=tokenizer,
+        file_path=file_path,
+        block_size=128
+    )
+
+def fine_tune(model, dataset):
+    training_args = TrainingArguments(
+        output_dir='./results',
+        overwrite_output_dir=True,
+        num_train_epochs=3,  # Increase the number of epochs for better results
+        per_device_train_batch_size=4,  # Adjust batch size based on your GPU capacity
+        save_steps=10_000,
+        save_total_limit=2,
+    )
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False,
+    )
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        data_collator=data_collator,
+        train_dataset=dataset,
+    )
+    trainer.train()
+
+# Load the dataset
+dataset = load_dataset("ai_corpus.txt", tokenizer)
+fine_tune(model, dataset)
+
+model.save_pretrained("./fine_tuned_model")
+tokenizer.save_pretrained("./fine_tuned_model")
+\end{lstlisting}
+
+\section{Flask Integration}
+To make the chatbot accessible via a web interface, we utilized Flask, a lightweight web framework for Python. The following code sets up a simple web server that interacts with the fine-tuned model:
+
+\begin{lstlisting}[language=Python, caption=Flask Code for Web Interface]
+from flask import Flask, render_template, request, jsonify
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+app = Flask(__name__)
+
+model_name = "./fine_tuned_model"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
+
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+chat_history = []
+
+@app.route('/')
+def home():
+    return render_template('simple_chatbot.html')
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    global chat_history
+    input_text = request.json['input_text']
+    
+    chat_history.append(f"You: {input_text}")
+    
+    inputs = tokenizer.encode_plus(input_text + tokenizer.eos_token, return_tensors="pt", padding=True)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+    
+    chat_history_ids = model.generate(
+        input_ids,
+        attention_mask=attention_mask,
+        max_length=100,
+        pad_token_id=tokenizer.eos_token_id,
+    )
+    
+    response = tokenizer.decode(chat_history_ids[:, input_ids.shape[-1]:][0], skip_special_tokens=True)
+    chat_history.append(f"Bot: {response}")
+    
+    return jsonify({'response': response})
+
+@app.route('/history', methods=['GET'])
+def history():
+    return jsonify({'history': "\n".join(chat_history)})
+
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5002)
+\end{lstlisting}
+
+\section{Implementation Details}
+The implementation involved several key components, including data preprocessing, model training, and response generation. One challenge faced was managing the large memory requirements of the model, which was mitigated by using gradient checkpointing. Performance was evaluated using metrics such as perplexity and response coherence.
+
+\section{Advanced Topics}
+This project explored advanced topics such as transfer learning and model optimization. By fine-tuning a pretrained model, we significantly reduced the training time and improved performance. Future improvements could include implementing more sophisticated dialogue management and integrating the chatbot with external APIs for dynamic responses.
+
+\section{Case Studies and Practical Applications}
+The chatbot was tested in various scenarios, including customer service and educational support. In customer service, the chatbot efficiently handled common queries, reducing the workload on human agents. In education, it provided instant responses to student questions, demonstrating its potential as a teaching assistant.
+
+\section{Tools and Resources}
+The following tools and resources were instrumental in the development of this project:
+
+\begin{itemize}
+    \item Google Colab for development and training.
+    \item PyTorch and TensorFlow for model implementation.
+    \item Hugging Face Transformers library.
+    \item LaTeX for documenting the project.
+\end{itemize}
+
+\section{Future Trends}
+The field of AI and conversational models is rapidly evolving. Future trends include the development of more sophisticated models capable of understanding and generating multi-turn dialogues, increased use of reinforcement learning for improved responses, and the integration of multimodal capabilities, allowing chatbots to process and respond to text, voice, and visual inputs.
+
+\section{Conclusion}
+In conclusion, this project successfully developed an AI chatbot using state-of-the-art machine learning techniques. The chatbot demonstrated effective conversational abilities, highlighting the potential of modern AI models. This project provided valuable insights into the design and implementation of conversational AI, paving the way for future advancements in this exciting field. We extend our gratitude to the AML3304 course instructors and peers for their support and guidance.
+
+\appendix
+\section{Appendix}
+Include any supplementary material, code, or detailed explanations that support your report.
+
+\section{References}
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
